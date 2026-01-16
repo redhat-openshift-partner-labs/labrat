@@ -5,6 +5,7 @@ import (
 	"os"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
@@ -101,4 +102,22 @@ func LoadManagedClusterFromFile(path string) (*clusterv1.ManagedCluster, error) 
 	}
 
 	return cluster, nil
+}
+
+// LoadClusterDeploymentFromFile loads a ClusterDeployment as an unstructured object from a YAML file
+// We use unstructured.Unstructured to avoid importing the full Hive API
+func LoadClusterDeploymentFromFile(path string) (*unstructured.Unstructured, error) {
+	// Read the YAML file
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read file %s: %w", path, err)
+	}
+
+	// Parse YAML into unstructured format
+	obj := &unstructured.Unstructured{}
+	if err := yaml.Unmarshal(data, obj); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal YAML: %w", err)
+	}
+
+	return obj, nil
 }
