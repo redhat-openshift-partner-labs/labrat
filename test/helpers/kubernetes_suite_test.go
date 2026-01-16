@@ -1,3 +1,5 @@
+//go:build test
+
 package helpers_test
 
 import (

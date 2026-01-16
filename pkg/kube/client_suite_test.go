@@ -1,3 +1,5 @@
+//go:build test
+
 package kube_test
 
 import (

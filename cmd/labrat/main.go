@@ -192,7 +192,7 @@ Examples:
 			// Create kubeconfig extractor
 			extractor := spoke.NewKubeconfigExtractor(
 				kubeClient.GetDynamicClient(),
-				kubeClient.GetCoreClient(),
+				kubeClient.GetCoreClient().CoreV1(),
 			)
 
 			ctx := context.Background()

@@ -1,3 +1,5 @@
+//go:build test
+
 package spoke_test
 
 import (

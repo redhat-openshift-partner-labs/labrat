@@ -8,14 +8,16 @@ import (
 	"os"
 
 	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 )
 
-// Client provides access to Kubernetes API via dynamic client
+// Client provides access to Kubernetes API via dynamic and core clients
 type Client struct {
 	config  *rest.Config
 	dynamic dynamic.Interface
+	core    kubernetes.Interface
 }
 
 // NewClient creates a new Kubernetes client from the specified kubeconfig file
@@ -60,13 +62,25 @@ func NewClient(kubeconfigPath string, context string) (*Client, error) {
 		return nil, fmt.Errorf("failed to create dynamic client: %w", err)
 	}
 
+	// Create core client for standard Kubernetes resources
+	coreClient, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create core client: %w", err)
+	}
+
 	return &Client{
 		config:  config,
 		dynamic: dynamicClient,
+		core:    coreClient,
 	}, nil
 }
 
 // GetDynamicClient returns the dynamic client interface for accessing Kubernetes resources
 func (c *Client) GetDynamicClient() dynamic.Interface {
 	return c.dynamic
+}
+
+// GetCoreClient returns the core Kubernetes client interface for accessing standard resources
+func (c *Client) GetCoreClient() kubernetes.Interface {
+	return c.core
 }
