@@ -14,9 +14,9 @@ import (
 
 var _ = Describe("CombinedClusterClient", func() {
 	var (
-		client                hub.CombinedClusterClient
-		mockMCClient          *mockManagedClusterClientForCombined
-		mockCDClient          *mockClusterDeploymentClientForCombined
+		client       hub.CombinedClusterClient
+		mockMCClient *mockManagedClusterClientForCombined
+		mockCDClient *mockClusterDeploymentClientForCombined
 	)
 
 	BeforeEach(func() {

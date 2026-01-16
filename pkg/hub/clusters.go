@@ -13,8 +13,8 @@ type CombinedClusterClient interface {
 }
 
 type combinedClusterClient struct {
-	managedClusterClient     ManagedClusterClient
-	clusterDeploymentClient  ClusterDeploymentClient
+	managedClusterClient    ManagedClusterClient
+	clusterDeploymentClient ClusterDeploymentClient
 }
 
 // NewCombinedClusterClient creates a new CombinedClusterClient

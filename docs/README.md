@@ -9,6 +9,7 @@ Welcome to the LABRAT documentation. This directory contains comprehensive guide
 User-facing command reference documentation.
 
 - [hub managedclusters](commands/hub-managedclusters.md) - List ACM managed clusters
+- [spoke kubeconfig](commands/spoke-kubeconfig.md) - Extract spoke cluster kubeconfig
 
 ### Architecture
 
@@ -49,10 +50,11 @@ All CLI commands have detailed documentation in the [commands/](commands/) direc
 
 | Command | Description | Status |
 |---------|-------------|--------|
-| `hub status` | Check ACM hub health | Implemented (placeholder) |
-| `hub managedclusters` | List managed clusters | In Development |
-| `spoke create` | Provision partner cluster | Implemented (placeholder) |
-| `bootstrap init` | Initialize environment | Implemented (placeholder) |
+| `hub status` | Check ACM hub health | Placeholder |
+| `hub managedclusters` | List managed clusters | ✅ Fully Implemented |
+| `spoke kubeconfig` | Extract spoke kubeconfig | ✅ Fully Implemented |
+| `spoke create` | Provision partner cluster | Placeholder |
+| `bootstrap init` | Initialize environment | Placeholder |
 
 ## Architecture Documentation
 

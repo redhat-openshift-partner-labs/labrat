@@ -6,7 +6,8 @@
 hub:
   # Path to kubeconfig for the ACM hub cluster
   # Supports environment variables ($HOME) and tilde (~) expansion
-  kubeconfig: $HOME/.kube/config
+  kubeconfig: ""
+  # kubeconfig: $HOME/.kube/config
   # kubeconfig: $HOME/Development/misc/openshift-partner-labs-envs/admin/config
 
   # Kubernetes context to use from the kubeconfig

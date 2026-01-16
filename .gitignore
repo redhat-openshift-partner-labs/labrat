@@ -32,3 +32,5 @@ go.work
 
 # MCP Tooling
 .serena/
+
+.task

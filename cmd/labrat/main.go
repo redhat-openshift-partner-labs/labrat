@@ -24,7 +24,7 @@ It provides a centralized interface for managing the ACM Hub and partner spoke c
 	}
 
 	// Persistent Flags
-	rootCmd.PersistentFlags().StringP("config", "c", "$HOME/.labrat/config.yaml", "path to labrat config")
+	rootCmd.PersistentFlags().StringP("config", "c", "$PWD/config.yaml", "path to labrat config")
 	rootCmd.PersistentFlags().BoolP("verbose", "v", false, "enable debug logging")
 
 	// --- HUB COMMAND ---

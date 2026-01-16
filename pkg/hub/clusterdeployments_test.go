@@ -21,7 +21,7 @@ import (
 
 var _ = Describe("ClusterDeploymentClient", func() {
 	var (
-		client hub.ClusterDeploymentClient
+		client            hub.ClusterDeploymentClient
 		mockDynamicClient *mockDynamicClientForCD
 	)
 

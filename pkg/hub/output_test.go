@@ -39,8 +39,7 @@ var _ = Describe("OutputWriter", func() {
 				Expect(err).NotTo(HaveOccurred())
 
 				output := buffer.String()
-				lines := strings.Split(strings.TrimSpace(output), "
-")
+				lines := strings.Split(strings.TrimSpace(output), "\n")
 
 				// Check header
 				Expect(lines[0]).To(ContainSubstring("NAME"))
@@ -67,8 +66,7 @@ var _ = Describe("OutputWriter", func() {
 				Expect(err).NotTo(HaveOccurred())
 
 				output := buffer.String()
-				lines := strings.Split(strings.TrimSpace(output), "
-")
+				lines := strings.Split(strings.TrimSpace(output), "\n")
 
 				// Should have header + 3 cluster rows
 				Expect(lines).To(HaveLen(4))
@@ -86,8 +84,7 @@ var _ = Describe("OutputWriter", func() {
 				Expect(err).NotTo(HaveOccurred())
 
 				output := buffer.String()
-				lines := strings.Split(strings.TrimSpace(output), "
-")
+				lines := strings.Split(strings.TrimSpace(output), "\n")
 
 				// Should only have the header line
 				Expect(lines).To(HaveLen(1))
@@ -171,8 +168,7 @@ var _ = Describe("OutputWriter", func() {
 				Expect(output).To(ContainSubstring("  "))
 
 				// Should be multiple lines (not minified)
-				lines := strings.Split(output, "
-")
+				lines := strings.Split(output, "\n")
 				Expect(len(lines)).To(BeNumerically(">", 5))
 			})
 		})
@@ -283,8 +279,7 @@ var _ = Describe("OutputWriter", func() {
 				Expect(err).NotTo(HaveOccurred())
 
 				output := buffer.String()
-				lines := strings.Split(strings.TrimSpace(output), "
-")
+				lines := strings.Split(strings.TrimSpace(output), "\n")
 
 				// Check header - should only have basic columns
 				Expect(lines[0]).To(ContainSubstring("NAME"))
@@ -314,8 +309,7 @@ var _ = Describe("OutputWriter", func() {
 				Expect(err).NotTo(HaveOccurred())
 
 				output := buffer.String()
-				lines := strings.Split(strings.TrimSpace(output), "
-")
+				lines := strings.Split(strings.TrimSpace(output), "\n")
 
 				// Check header - should have all columns
 				Expect(lines[0]).To(ContainSubstring("NAME"))
@@ -358,8 +352,7 @@ var _ = Describe("OutputWriter", func() {
 				Expect(err).NotTo(HaveOccurred())
 
 				output := buffer.String()
-				lines := strings.Split(strings.TrimSpace(output), "
-")
+				lines := strings.Split(strings.TrimSpace(output), "\n")
 
 				// Should have header + 3 cluster rows
 				Expect(lines).To(HaveLen(4))
@@ -423,8 +416,7 @@ var _ = Describe("OutputWriter", func() {
 				Expect(err).NotTo(HaveOccurred())
 
 				output := buffer.String()
-				lines := strings.Split(strings.TrimSpace(output), "
-")
+				lines := strings.Split(strings.TrimSpace(output), "\n")
 
 				// Should only have the header line
 				Expect(lines).To(HaveLen(1))

@@ -59,6 +59,22 @@ labrat hub managedclusters --status NotReady
 labrat hub managedclusters --status Unknown
 ```
 
+### `--wide`
+**Type**: Boolean
+**Optional**: Yes
+**Default**: `false`
+
+Display additional cluster information from ClusterDeployment resources including power state, platform, region, and OpenShift version.
+
+**Example**:
+```bash
+# Show extended information
+labrat hub managedclusters --wide
+
+# Combine with status filter
+labrat hub managedclusters --status Ready --wide
+```
+
 ### Global Flags
 
 Inherited from parent commands:
@@ -87,6 +103,31 @@ cluster-central           Unknown     Unknown
 9831783a-citrixudn        NotReady    Unknown
 ```
 
+### Wide Table Format
+
+When using the `--wide` flag, additional columns from ClusterDeployment resources are displayed:
+
+| Column | Description |
+|--------|-------------|
+| NAME | The name of the managed cluster |
+| STATUS | Overall cluster status: `Ready`, `NotReady`, or `Unknown` |
+| AVAILABLE | The value of the ManagedClusterConditionAvailable condition |
+| POWER STATE | ClusterDeployment power state (Running, Hibernating, Stopped, etc.) |
+| PLATFORM | Cloud platform (AWS, Azure, GCP, etc.) |
+| REGION | Cloud provider region |
+| VERSION | OpenShift version |
+
+**Example Output**:
+```
+NAME                      STATUS      AVAILABLE   POWER STATE   PLATFORM   REGION         VERSION
+cluster-east-1            Ready       True        Running       AWS        us-east-1      4.14.8
+cluster-west-1            NotReady    False       Hibernating   Azure      westus2        4.13.21
+cluster-central           Unknown     Unknown     N/A           N/A        N/A            N/A
+9831783a-citrixudn        NotReady    Unknown     Running       GCP        us-central1    4.15.0
+```
+
+**Note**: Clusters without a corresponding ClusterDeployment resource will show "N/A" for the additional columns.
+
 ### JSON Format
 
 JSON output provides the same information in machine-readable format:
@@ -110,6 +151,33 @@ JSON output provides the same information in machine-readable format:
     "status": "Unknown",
     "available": "Unknown",
     "message": ""
+  }
+]
+```
+
+When using `--wide`, additional ClusterDeployment fields are included:
+
+```json
+[
+  {
+    "name": "cluster-east-1",
+    "status": "Ready",
+    "available": "True",
+    "message": "Managed cluster is available",
+    "powerState": "Running",
+    "platform": "AWS",
+    "region": "us-east-1",
+    "version": "4.14.8"
+  },
+  {
+    "name": "cluster-west-1",
+    "status": "NotReady",
+    "available": "False",
+    "message": "Registration agent stopped updating its lease.",
+    "powerState": "Hibernating",
+    "platform": "Azure",
+    "region": "westus2",
+    "version": "4.13.21"
   }
 ]
 ```
@@ -162,6 +230,24 @@ Output:
 NAME                STATUS      AVAILABLE
 cluster-prod-1      Ready       True
 cluster-dev-1       Ready       True
+```
+
+### Show Extended Information with --wide
+```bash
+labrat hub managedclusters --wide
+```
+
+Output:
+```
+NAME                STATUS      AVAILABLE   POWER STATE   PLATFORM   REGION         VERSION
+cluster-prod-1      Ready       True        Running       AWS        us-east-1      4.14.8
+cluster-dev-1       Ready       True        Running       Azure      eastus         4.13.21
+cluster-test-1      NotReady    False       Hibernating   GCP        us-central1    4.15.0
+```
+
+### Combine --wide with Status Filter
+```bash
+labrat hub managedclusters --status Ready --wide --output json
 ```
 
 ### Count Clusters by Status

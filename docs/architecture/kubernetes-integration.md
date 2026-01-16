@@ -51,15 +51,25 @@ The `hub` package provides high-level ACM hub cluster operations.
 
 **Responsibilities**:
 - List and filter ManagedCluster resources
+- List and correlate ClusterDeployment (Hive) resources
 - Derive cluster status from conditions
 - Format output for CLI display
-- Abstract ACM-specific logic
+- Abstract ACM and Hive-specific logic
 
 **Key Types**:
 ```go
 type ManagedClusterClient interface {
     List(ctx context.Context) ([]ManagedClusterInfo, error)
     Filter(clusters []ManagedClusterInfo, filter ManagedClusterFilter) []ManagedClusterInfo
+}
+
+type ClusterDeploymentClient interface {
+    List(ctx context.Context) ([]ClusterDeploymentInfo, error)
+    Get(ctx context.Context, name, namespace string) (*ClusterDeploymentInfo, error)
+}
+
+type CombinedClusterClient interface {
+    List(ctx context.Context) ([]CombinedClusterInfo, error)
 }
 ```
 
@@ -78,12 +88,17 @@ Create Kube Client (pkg/kube)
     ├── Build REST config
     └── Create dynamic client
     ↓
-Create Hub Client (pkg/hub)
+Create Hub Clients (pkg/hub)
     ├── Receive dynamic client
+    ├── Create ManagedCluster client
+    ├── Create ClusterDeployment client
+    ├── Create Combined client (correlates both)
     └── Prepare for CRD operations
     ↓
 Execute Operations
-    ├── List ManagedClusters
+    ├── List ManagedClusters (basic info)
+    ├── List ClusterDeployments (platform/power state)
+    ├── Correlate resources (combined view)
     ├── Filter results
     └── Format output
 ```
@@ -251,6 +266,180 @@ func deriveStatus(cluster *clusterv1.ManagedCluster) ClusterStatus {
 }
 ```
 
+## Dual Resource Model: ManagedCluster + ClusterDeployment
+
+LABRAT implements a dual resource model to provide complete cluster management capabilities. This model correlates two complementary Kubernetes custom resources on the hub cluster.
+
+### Why Two Resources?
+
+**ManagedCluster (ACM)** and **ClusterDeployment (Hive)** serve different purposes:
+
+| Aspect | ManagedCluster (ACM) | ClusterDeployment (Hive) |
+|--------|----------------------|--------------------------|
+| **Purpose** | Cluster registration and health monitoring | Cluster lifecycle and provisioning |
+| **Scope** | Cluster-scoped | Namespaced (namespace = cluster name) |
+| **Provides** | Health status, availability, addons | Power state, platform, region, version, credentials |
+| **Created When** | Cluster is imported or created | Cluster is provisioned (not for imported clusters) |
+| **API Group** | cluster.open-cluster-management.io | hive.openshift.io |
+
+### Resource Correlation
+
+Both resources share the same cluster name, enabling correlation:
+
+```go
+// ManagedCluster
+apiVersion: cluster.open-cluster-management.io/v1
+kind: ManagedCluster
+metadata:
+  name: my-cluster
+
+// ClusterDeployment (in namespace with same name)
+apiVersion: hive.openshift.io/v1
+kind: ClusterDeployment
+metadata:
+  name: my-cluster
+  namespace: my-cluster
+```
+
+### ClusterDeployment Resource Handling
+
+#### Resource Schema
+
+```yaml
+apiVersion: hive.openshift.io/v1
+kind: ClusterDeployment
+metadata:
+  name: cluster-name
+  namespace: cluster-name
+  annotations:
+    hive.openshift.io/cluster-platform: AWS
+spec:
+  powerState: Running  # Running, Hibernating, Stopped
+  platform:
+    aws:
+      region: us-east-1
+  provisioning:
+    imageSetRef:
+      name: openshift-v4.14.8
+status:
+  adminKubeconfigSecretRef:
+    name: cluster-name-admin-kubeconfig
+  installedTimestamp: "2024-01-15T10:30:00Z"
+  powerState: Running
+```
+
+#### Key Fields
+
+**Spec**:
+- `spec.powerState`: Desired power state (Running, Hibernating, Stopped)
+- `spec.platform`: Cloud platform configuration (AWS, Azure, GCP, etc.)
+- `spec.platform.<provider>.region`: Cloud region
+- `spec.provisioning.imageSetRef.name`: OpenShift version reference
+
+**Status**:
+- `status.powerState`: Current power state
+- `status.adminKubeconfigSecretRef`: Reference to admin kubeconfig secret
+- `status.installedTimestamp`: When cluster was provisioned
+
+**Metadata**:
+- `metadata.annotations["hive.openshift.io/cluster-platform"]`: Platform type
+
+### Combined Client Architecture
+
+The `CombinedClusterClient` merges data from both resources:
+
+```go
+type CombinedClusterInfo struct {
+    // From ManagedCluster
+    Name      string
+    Status    ClusterStatus
+    Available string
+    Message   string
+
+    // From ClusterDeployment
+    PowerState string
+    Platform   string
+    Region     string
+    Version    string
+}
+
+func (c *CombinedClusterClient) List(ctx context.Context) ([]CombinedClusterInfo, error) {
+    // 1. List all ManagedClusters
+    managedClusters := managedClusterClient.List(ctx)
+
+    // 2. List all ClusterDeployments
+    clusterDeployments := clusterDeploymentClient.List(ctx)
+
+    // 3. Correlate by name
+    for each managedCluster {
+        info := CombinedClusterInfo{Name: managedCluster.Name, ...}
+
+        if deployment := findDeployment(managedCluster.Name) {
+            info.PowerState = deployment.PowerState
+            info.Platform = deployment.Platform
+            info.Region = deployment.Region
+            info.Version = deployment.Version
+        } else {
+            // No ClusterDeployment (imported cluster)
+            info.PowerState = "N/A"
+            info.Platform = "N/A"
+            info.Region = "N/A"
+            info.Version = "N/A"
+        }
+    }
+}
+```
+
+### Handling Missing ClusterDeployments
+
+Not all ManagedClusters have a corresponding ClusterDeployment:
+
+**Scenarios**:
+- **Imported clusters**: Manually imported clusters lack Hive resources
+- **Non-cloud platforms**: Bare metal or vSphere clusters may not use Hive
+- **Legacy clusters**: Older clusters created before Hive integration
+
+**Graceful Degradation**:
+```go
+// --wide flag shows "N/A" for missing ClusterDeployment data
+NAME                STATUS      AVAILABLE   POWER STATE   PLATFORM   REGION   VERSION
+imported-cluster    Ready       True        N/A           N/A        N/A      N/A
+hive-cluster        Ready       True        Running       AWS        us-e-1   4.14.8
+```
+
+### Spoke Kubeconfig Extraction
+
+The `spoke kubeconfig` command uses ClusterDeployment to access spoke credentials:
+
+```
+1. Find ClusterDeployment for cluster
+   ↓
+2. Extract status.adminKubeconfigSecretRef
+   ↓
+3. Read secret from same namespace
+   ↓
+4. Decode kubeconfig data
+   ↓
+5. Output to file or stdout
+```
+
+**Implementation**:
+```go
+func ExtractKubeconfig(clusterName string) ([]byte, error) {
+    // 1. Get ClusterDeployment
+    deployment := clusterDeploymentClient.Get(ctx, clusterName, clusterName)
+
+    // 2. Get secret reference
+    secretName := deployment.Status.AdminKubeconfigSecretRef.Name
+
+    // 3. Read secret
+    secret := secretClient.Get(ctx, secretName, clusterName)
+
+    // 4. Extract kubeconfig data
+    return secret.Data["kubeconfig"], nil
+}
+```
+
 ## Testing Strategy
 
 ### Unit Testing with Fake Clients
@@ -361,10 +550,11 @@ k8s.io/api v0.31.4          // Kubernetes API types
 k8s.io/apimachinery v0.31.4 // API machinery (metav1, schema, etc.)
 ```
 
-### ACM API Types
+### ACM and Hive API Types
 
 ```go
 open-cluster-management.io/api v0.15.0  // ManagedCluster CRD types
+github.com/openshift/hive/apis v1.2.0   // ClusterDeployment CRD types
 ```
 
 ### Import Paths
@@ -377,8 +567,10 @@ import (
     "k8s.io/apimachinery/pkg/runtime/schema"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/apimachinery/pkg/runtime"
+    corev1 "k8s.io/api/core/v1"
 
     clusterv1 "open-cluster-management.io/api/cluster/v1"
+    hivev1 "github.com/openshift/hive/apis/hive/v1"
 )
 ```
 
@@ -398,12 +590,27 @@ Users need the following permissions on the hub cluster:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: labrat-managedcluster-reader
+  name: labrat-hub-reader
 rules:
+# ManagedCluster access (cluster-scoped)
 - apiGroups: ["cluster.open-cluster-management.io"]
   resources: ["managedclusters"]
   verbs: ["get", "list", "watch"]
+
+# ClusterDeployment access (namespaced)
+- apiGroups: ["hive.openshift.io"]
+  resources: ["clusterdeployments"]
+  verbs: ["get", "list"]
+
+# Secret access for kubeconfig extraction (namespaced)
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get"]
+  # Note: In practice, limit secret access to specific namespaces
+  # via RoleBindings rather than ClusterRoleBinding
 ```
+
+**Important**: For security, use namespace-specific RoleBindings for ClusterDeployment and secret access rather than granting cluster-wide permissions.
 
 ### TLS Verification
 
@@ -412,12 +619,20 @@ rules:
 
 ## Future Enhancements
 
+### Implemented ✅
+
+1. **ClusterDeployment Integration**: Correlate ManagedCluster with ClusterDeployment for platform/power state info
+2. **Wide Output Mode**: Enhanced cluster listing with platform details
+3. **Kubeconfig Extraction**: Extract spoke admin kubeconfig from hub secrets
+4. **Combined Client**: Unified view of ManagedCluster + ClusterDeployment data
+
 ### Planned
 
 1. **Watch Mode**: Real-time cluster status updates
-2. **Cluster Details**: Detailed view of single cluster
-3. **Spoke Operations**: Direct spoke cluster interactions
+2. **Cluster Details**: Detailed view of single cluster (`spoke get`)
+3. **Power State Management**: Hibernate/resume clusters via ClusterDeployment
 4. **Status History**: Track status changes over time
+5. **Cluster Provisioning**: Create new spoke clusters via Hive
 
 ### Under Consideration
 
@@ -425,9 +640,13 @@ rules:
 2. **Event Streaming**: Display cluster events
 3. **Batch Operations**: Apply operations to multiple clusters
 4. **Custom Conditions**: User-defined status indicators
+5. **ClusterClaim Integration**: Support for cluster pool management
 
 ## References
 
 - [Kubernetes client-go Documentation](https://github.com/kubernetes/client-go)
 - [ACM ManagedCluster API](https://open-cluster-management.io/concepts/managedcluster/)
+- [OpenShift Hive Documentation](https://github.com/openshift/hive/blob/master/docs/using-hive.md)
+- [Hive ClusterDeployment API](https://github.com/openshift/hive/blob/master/docs/clusterdeployment.md)
 - [Dynamic Client Guide](https://ymqytw.github.io/kubernetes/dynamic-client/)
+- [ACM Architecture](https://access.redhat.com/documentation/en-us/red_hat_advanced_cluster_management_for_kubernetes/)

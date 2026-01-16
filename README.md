@@ -23,11 +23,17 @@ Usage:
   labrat [command] [subcommand] [flags]
 
 Commands:
-  hub        Interact with the primary ACM management cluster (status, logs, etc.)
-  spoke      Manage individual partner clusters (create, delete, list)
-  bootstrap  Initialize local environments or provision new lab templates
-  sync       Reconcile configuration state between Hub and Spokes
-  status     Global health overview of the lab ecosystem
+  hub        Interact with the primary ACM management cluster
+    managedclusters    List all ACM managed clusters with status (✅ Implemented)
+    status            Global hub health overview (planned)
+
+  spoke      Manage individual partner clusters
+    kubeconfig        Extract admin kubeconfig for a spoke cluster (✅ Implemented)
+    create            Provision a new spoke cluster (planned)
+    delete            Decommission a spoke cluster (planned)
+
+  bootstrap  Initialize local environments or provision new lab templates (planned)
+  sync       Reconcile configuration state between Hub and Spokes (planned)
 
 Global Flags:
   -c, --config      Path to labrat config (default: ~/.labrat/config.yaml)
@@ -51,6 +57,7 @@ labrat hub managedclusters [flags]
 **Flags**:
 - `--output, -o`: Output format (table|json), default: table
 - `--status`: Filter by status (Ready|NotReady|Unknown), optional
+- `--wide`: Show additional cluster details from ClusterDeployment (power state, platform, region, version)
 - `--config, -c`: Path to labrat config (default: ~/.labrat/config.yaml)
 - `--verbose, -v`: Enable debug logging
 
@@ -67,6 +74,9 @@ labrat hub managedclusters --output json
 labrat hub managedclusters --status Ready
 labrat hub managedclusters --status NotReady
 
+# Show additional details from ClusterDeployment
+labrat hub managedclusters --wide
+
 # Use custom config
 labrat hub managedclusters --config ./my-config.yaml
 ```
@@ -77,6 +87,14 @@ NAME                STATUS      AVAILABLE
 cluster-east-1      Ready       True
 cluster-west-1      NotReady    False
 cluster-central     Unknown     Unknown
+```
+
+**Example Output** (--wide format):
+```
+NAME                STATUS      AVAILABLE   POWER STATE   PLATFORM   REGION      VERSION
+cluster-east-1      Ready       True        Running       AWS        us-east-1   4.15.2
+cluster-west-1      NotReady    False       Hibernating   Azure      westus      4.14.8
+cluster-central     Unknown     Unknown     N/A           N/A        N/A         N/A
 ```
 
 **Prerequisites**:
@@ -91,6 +109,62 @@ The command derives cluster status using the following priority:
 3. ManagedClusterConditionAvailable=False → NotReady
 4. ManagedClusterConditionAvailable=Unknown → Unknown
 5. No conditions → Unknown
+
+**Wide Format Details**:
+The `--wide` flag correlates data from both ManagedCluster (ACM) and ClusterDeployment (Hive) resources:
+- **Power State**: Extracted from ClusterDeployment's power state annotation
+- **Platform**: Cloud provider (AWS, Azure, GCP, etc.) from ClusterDeployment spec
+- **Region**: Geographic region from ClusterDeployment platform details
+- **Version**: OpenShift version from ClusterDeployment installed metadata
+- Clusters without ClusterDeployment resources show "N/A" for these fields
+
+### Spoke Commands
+
+#### `labrat spoke kubeconfig`
+
+Extract the admin kubeconfig from a spoke cluster's ClusterDeployment secret on the hub.
+
+**Usage**:
+```bash
+labrat spoke kubeconfig <cluster-name> [flags]
+```
+
+**Flags**:
+- `--output, -o`: Output file path (default: stdout)
+- `--config, -c`: Path to labrat config (default: ~/.labrat/config.yaml)
+- `--verbose, -v`: Enable debug logging
+
+**Examples**:
+
+```bash
+# Print kubeconfig to stdout
+labrat spoke kubeconfig my-cluster
+
+# Save kubeconfig to file
+labrat spoke kubeconfig my-cluster -o /tmp/my-cluster.kubeconfig
+
+# Use the kubeconfig with kubectl
+labrat spoke kubeconfig my-cluster -o /tmp/kubeconfig
+kubectl --kubeconfig /tmp/kubeconfig get nodes
+
+# Use directly with process substitution (bash/zsh)
+kubectl --kubeconfig <(labrat spoke kubeconfig my-cluster) get nodes
+```
+
+**Prerequisites**:
+- Access to an ACM hub cluster
+- Valid kubeconfig configured in `~/.labrat/config.yaml`
+- Kubernetes permissions to read Secrets in the spoke cluster's namespace
+- ClusterDeployment resource exists for the target spoke cluster
+
+**How it Works**:
+1. Locates the ClusterDeployment resource for the specified cluster name
+2. Retrieves the admin kubeconfig from the secret referenced in the ClusterDeployment
+3. Decodes the kubeconfig (handles both base64-encoded and plain text)
+4. Outputs to stdout or saves to the specified file
+
+**Security Note**:
+⚠️ The extracted kubeconfig has **full cluster-admin privileges** on the spoke cluster. Use with caution and store securely. Never commit kubeconfig files to version control.
 
 ## 🛠 Development & Build
 
@@ -167,6 +241,41 @@ LABRAT acts as the orchestration layer between:
 
 1. **The Hub**: The central authority running Red Hat ACM.
 2. **The Spokes**: The distributed OpenShift clusters provisioned for partners across various cloud and on-premise providers.
+
+### Dual Resource Model
+
+LABRAT integrates with two complementary Kubernetes resources on the ACM hub to provide complete cluster management:
+
+#### ManagedCluster (ACM) - Cluster-Scoped
+- **Purpose**: Provides ACM-specific cluster health and management status
+- **Key Data**:
+  - Cluster availability and health conditions
+  - ACM addon status (application-manager, policy-controller, etc.)
+  - Cluster reachability status
+- **Limitation**: Does not contain spoke cluster access credentials
+
+#### ClusterDeployment (Hive) - Namespaced
+- **Purpose**: Provides cluster provisioning details and access credentials
+- **Namespace**: Each ClusterDeployment exists in a namespace matching the cluster name
+- **Key Data**:
+  - Admin kubeconfig secret reference (for spoke access)
+  - Power state (Running, Hibernating, etc.)
+  - Platform details (AWS, Azure, GCP, etc.)
+  - Region and availability zone information
+  - OpenShift version information
+  - Provisioning status
+- **Limitation**: Does not include ACM-level health metrics
+
+#### Resource Correlation
+
+ManagedCluster and ClusterDeployment resources share the same **cluster name** and must be correlated for complete cluster visibility:
+
+- **ManagedCluster name** = `cluster-east-1` (cluster-scoped)
+- **ClusterDeployment name** = `cluster-east-1` (in namespace `cluster-east-1`)
+
+LABRAT's combined client (`pkg/hub/clusters.go`) automatically correlates these resources to provide a unified view, enabling features like:
+- `labrat hub managedclusters --wide` (combines ACM status + Hive metadata)
+- `labrat spoke kubeconfig` (uses ClusterDeployment to extract spoke credentials)
 
 ---
 *Maintained by the OpenShift Partner Labs Team.*
