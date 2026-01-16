@@ -1,0 +1,13 @@
+# Example valid LABRAT configuration for testing
+hub:
+  kubeconfig: /home/user/.kube/config
+  context: hub-cluster
+  namespace: open-cluster-management
+
+defaults:
+  spoke:
+    provider: aws
+    region: us-east-1
+    size: medium
+
+verbose: false

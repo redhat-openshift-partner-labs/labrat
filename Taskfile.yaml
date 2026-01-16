@@ -1,0 +1,177 @@
+version: '3'
+
+vars:
+  BINARY_NAME: labrat
+  # Updated to point to the standard Go command directory structure
+  CMD_PATH: ./cmd/labrat/main.go
+  BUILD_DIR: ./bin
+
+tasks:
+  default:
+    desc: List available tasks
+    cmds:
+      - task --list
+
+  init:
+    desc: Initialize Go modules
+    cmds:
+      - go mod init github.com/redhat-openshift-partner-labs/labrat || true
+      - go mod tidy
+
+  build:
+    desc: Build the LABRAT binary
+    sources:
+      - ./**/*.go
+    generates:
+      - "{{.BUILD_DIR}}/{{.BINARY_NAME}}"
+    cmds:
+      - mkdir -p {{.BUILD_DIR}}
+      - go build -o {{.BUILD_DIR}}/{{.BINARY_NAME}} {{.CMD_PATH}}
+    silent: true
+
+  run:
+    desc: Build and run the binary
+    deps: [build]
+    cmds:
+      - "{{.BUILD_DIR}}/{{.BINARY_NAME}} {{.CLI_ARGS}}"
+
+  test:
+    desc: Run unit tests (default test task)
+    cmds:
+      - task: test:unit
+
+  install:
+    desc: Install the binary to $GOPATH/bin
+    deps: [build]
+    cmds:
+      - go install {{.CMD_PATH}}
+    status:
+      - which {{.BINARY_NAME}}
+
+  clean:
+    desc: Remove build artifacts
+    cmds:
+      - rm -rf {{.BUILD_DIR}}
+    silent: true
+
+  # ============================================
+  # Testing Tasks
+  # ============================================
+
+  test:deps:
+    desc: Install testing tools and dependencies
+    cmds:
+      - go install github.com/onsi/ginkgo/v2/ginkgo@latest
+      - go install github.com/maxbrunsfeld/counterfeiter/v6@latest
+      - go get github.com/onsi/gomega/...
+    status:
+      - which ginkgo
+      - which counterfeiter
+
+  test:unit:
+    desc: Run unit tests with Ginkgo
+    cmds:
+      - ginkgo -r --skip-package=test/e2e --randomize-all --fail-on-pending
+    silent: false
+
+  test:integration:
+    desc: Run integration tests
+    cmds:
+      - go test -tags=integration -v ./...
+
+  test:e2e:
+    desc: Run end-to-end tests
+    cmds:
+      - go test -tags=e2e -v ./test/e2e/...
+
+  test:coverage:
+    desc: Generate test coverage report
+    cmds:
+      - mkdir -p coverage
+      - go test -coverprofile=coverage/coverage.out ./...
+      - go tool cover -html=coverage/coverage.out -o coverage/coverage.html
+      - go tool cover -func=coverage/coverage.out
+      - echo "📊 Coverage report generated at coverage/coverage.html"
+
+  test:watch:
+    desc: Watch and run tests on changes (TDD mode)
+    cmds:
+      - ginkgo watch -r --skip-package=test/e2e
+
+  test:all:
+    desc: Run all tests (unit + integration + e2e)
+    cmds:
+      - task: test:unit
+      - task: test:integration
+      - task: test:e2e
+
+  test:race:
+    desc: Run tests with race detector
+    cmds:
+      - go test -race ./...
+
+  mocks:generate:
+    desc: Generate mocks using counterfeiter
+    cmds:
+      - go generate ./...
+
+  # ============================================
+  # Linting Tasks
+  # ============================================
+
+  lint:deps:
+    desc: Install golangci-lint
+    cmds:
+      - go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+    status:
+      - which golangci-lint
+
+  lint:
+    desc: Run golangci-lint with default settings
+    cmds:
+      - golangci-lint run
+
+  lint:fix:
+    desc: Run golangci-lint and auto-fix issues where possible
+    cmds:
+      - golangci-lint run --fix
+
+  lint:verbose:
+    desc: Run golangci-lint with verbose output
+    cmds:
+      - golangci-lint run -v
+
+  fmt:
+    desc: Format Go code with gofmt
+    cmds:
+      - gofmt -s -w .
+
+  fmt:check:
+    desc: Check if code is formatted correctly
+    cmds:
+      - test -z "$(gofmt -s -l . | tee /dev/stderr)"
+
+  vet:
+    desc: Run go vet
+    cmds:
+      - go vet ./...
+
+  # ============================================
+  # Quality Checks (Combined)
+  # ============================================
+
+  check:
+    desc: Run all quality checks (fmt, vet, lint, test)
+    cmds:
+      - task: fmt
+      - task: vet
+      - task: lint
+      - task: test:unit
+
+  ci:
+    desc: Run CI pipeline checks (fmt check, vet, lint, all tests)
+    cmds:
+      - task: fmt:check
+      - task: vet
+      - task: lint
+      - task: test:all

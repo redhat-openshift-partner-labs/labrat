@@ -1,0 +1,161 @@
+# golangci-lint configuration for LABRAT
+# See: https://golangci-lint.run/usage/configuration/
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  enable:
+    # Default linters
+    - errcheck      # Check for unchecked errors
+    - gosimple      # Simplify code
+    - govet         # Vet examines Go source code
+    - ineffassign   # Detect ineffectual assignments
+    - staticcheck   # Go static analysis
+    - unused        # Check for unused constants, variables, functions
+
+    # Additional recommended linters
+    - gofmt         # Check code formatting
+    - goimports     # Check import ordering
+    - misspell      # Find commonly misspelled words
+    - revive        # Fast, configurable, extensible, flexible, and beautiful linter
+    - gosec         # Security checks
+    - unconvert     # Remove unnecessary type conversions
+    - unparam       # Find unused function parameters
+    - gocyclo       # Check cyclomatic complexity
+    - dupl          # Code clone detection
+    - goconst       # Find repeated strings that could be constants
+    - gocognit      # Check cognitive complexity
+    - bodyclose     # Check HTTP response body is closed
+    - nilerr        # Find code returning nil even if it checks err != nil
+    - prealloc      # Find slice declarations that could be preallocated
+    - stylecheck    # Stylecheck is a replacement for golint
+    - whitespace    # Detection of leading/trailing whitespace
+
+  disable:
+    - typecheck     # Disabled because of generics issues in some Go versions
+
+linters-settings:
+  errcheck:
+    check-type-assertions: true
+    check-blank: true
+
+  govet:
+    enable:
+      - shadow
+
+  gocyclo:
+    min-complexity: 15
+
+  gocognit:
+    min-complexity: 20
+
+  dupl:
+    threshold: 100
+
+  goconst:
+    min-len: 3
+    min-occurrences: 3
+
+  misspell:
+    locale: US
+
+  revive:
+    rules:
+      - name: blank-imports
+      - name: context-as-argument
+      - name: context-keys-type
+      - name: dot-imports
+      - name: error-return
+      - name: error-strings
+      - name: error-naming
+      - name: exported
+      - name: if-return
+      - name: increment-decrement
+      - name: var-naming
+      - name: var-declaration
+      - name: package-comments
+      - name: range
+      - name: receiver-naming
+      - name: time-naming
+      - name: unexported-return
+      - name: indent-error-flow
+      - name: errorf
+      - name: empty-block
+      - name: superfluous-else
+      - name: unused-parameter
+      - name: unreachable-code
+      - name: redefines-builtin-id
+
+  gosec:
+    excludes:
+      - G204  # Subprocess with variable - common in CLI tools
+
+  stylecheck:
+    checks: ["all", "-ST1000", "-ST1003"]  # Disable package comments and CamelCase checks for now
+
+issues:
+  exclude-dirs:
+    - bin
+    - vendor
+    - .serena
+    - .idea
+
+  exclude-files:
+    - ".*\\.pb\\.go$"
+    - ".*\\.gen\\.go$"
+
+  exclude-rules:
+    # Exclude some linters from running on tests files
+    - path: _test\.go
+      linters:
+        - gocyclo
+        - errcheck
+        - dupl
+        - gosec
+        - goconst
+
+    # Allow dot imports in test files (idiomatic for Ginkgo/Gomega)
+    - path: _test\.go
+      text: "(dot-imports|ST1001)"
+      linters:
+        - revive
+        - stylecheck
+
+    # Exclude some linters from test helpers
+    - path: test/helpers/
+      linters:
+        - errcheck
+        - gosec
+
+    # Allow dot imports in test helpers (idiomatic for Gomega)
+    - path: test/helpers/
+      text: "(dot-imports|ST1001)"
+      linters:
+        - revive
+        - stylecheck
+
+    # Exclude linters for generated mocks
+    - path: mocks/
+      linters:
+        - all
+
+  # Maximum issues count per one linter
+  max-issues-per-linter: 50
+
+  # Maximum count of issues with the same text
+  max-same-issues: 3
+
+  # Show only new issues
+  new: false
+
+  # Fix found issues (if possible)
+  fix: false
+
+output:
+  formats:
+    - format: colored-line-number
+  print-issued-lines: true
+  print-linter-name: true
+  sort-results: true
