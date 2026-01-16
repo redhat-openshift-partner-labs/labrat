@@ -8,6 +8,7 @@ import (
 	"github.com/redhat-openshift-partner-labs/labrat/internal/config"
 	"github.com/redhat-openshift-partner-labs/labrat/pkg/hub"
 	"github.com/redhat-openshift-partner-labs/labrat/pkg/kube"
+	"github.com/redhat-openshift-partner-labs/labrat/pkg/spoke"
 	"github.com/spf13/cobra"
 )
 
@@ -49,6 +50,7 @@ It provides a centralized interface for managing the ACM Hub and partner spoke c
 			configPath, _ := cmd.Flags().GetString("config")
 			outputFormat, _ := cmd.Flags().GetString("output")
 			statusFilter, _ := cmd.Flags().GetString("status")
+			wide, _ := cmd.Flags().GetBool("wide")
 
 			// 2. Load config (expand path to support both $HOME and ~)
 			cfg, err := config.Load(config.ExpandPath(configPath))
@@ -62,28 +64,60 @@ It provides a centralized interface for managing the ACM Hub and partner spoke c
 				return fmt.Errorf("failed to create kubernetes client: %w", err)
 			}
 
-			// 4. Create ManagedCluster client
-			mcClient := hub.NewManagedClusterClient(kubeClient.GetDynamicClient())
-
-			// 5. List clusters
-			ctx := context.Background()
-			clusters, err := mcClient.List(ctx)
-			if err != nil {
-				return fmt.Errorf("failed to list managed clusters: %w", err)
-			}
-
-			// 6. Apply filter if specified
-			if statusFilter != "" {
-				filter := hub.ManagedClusterFilter{
-					Status: hub.ClusterStatus(statusFilter),
-				}
-				clusters = mcClient.Filter(clusters, filter)
-			}
-
-			// 7. Output results
+			// 4. Create output writer
 			output := hub.NewOutputWriter(hub.OutputFormat(outputFormat), os.Stdout)
-			if err := output.Write(clusters); err != nil {
-				return fmt.Errorf("failed to write output: %w", err)
+
+			// 5. If --wide flag is set, use combined cluster view
+			ctx := context.Background()
+			if wide {
+				// Create both ManagedCluster and ClusterDeployment clients
+				mcClient := hub.NewManagedClusterClient(kubeClient.GetDynamicClient())
+				cdClient := hub.NewClusterDeploymentClient(kubeClient.GetDynamicClient())
+				combinedClient := hub.NewCombinedClusterClient(mcClient, cdClient)
+
+				// List combined clusters
+				combined, err := combinedClient.ListCombined(ctx)
+				if err != nil {
+					return fmt.Errorf("failed to list combined clusters: %w", err)
+				}
+
+				// Apply filter if specified (filter on Status field)
+				if statusFilter != "" {
+					filtered := make([]hub.CombinedClusterInfo, 0)
+					for _, cluster := range combined {
+						if string(cluster.Status) == statusFilter {
+							filtered = append(filtered, cluster)
+						}
+					}
+					combined = filtered
+				}
+
+				// Output combined results
+				if err := output.WriteCombined(combined, true); err != nil {
+					return fmt.Errorf("failed to write output: %w", err)
+				}
+			} else {
+				// Use standard ManagedCluster view
+				mcClient := hub.NewManagedClusterClient(kubeClient.GetDynamicClient())
+
+				// List clusters
+				clusters, err := mcClient.List(ctx)
+				if err != nil {
+					return fmt.Errorf("failed to list managed clusters: %w", err)
+				}
+
+				// Apply filter if specified
+				if statusFilter != "" {
+					filter := hub.ManagedClusterFilter{
+						Status: hub.ClusterStatus(statusFilter),
+					}
+					clusters = mcClient.Filter(clusters, filter)
+				}
+
+				// Output results
+				if err := output.Write(clusters); err != nil {
+					return fmt.Errorf("failed to write output: %w", err)
+				}
 			}
 
 			return nil
@@ -92,6 +126,7 @@ It provides a centralized interface for managing the ACM Hub and partner spoke c
 
 	hubManagedClustersCmd.Flags().StringP("output", "o", "table", "Output format (table|json)")
 	hubManagedClustersCmd.Flags().String("status", "", "Filter by status (Ready|NotReady|Unknown)")
+	hubManagedClustersCmd.Flags().Bool("wide", false, "Show additional cluster details from ClusterDeployment")
 
 	hubCmd.AddCommand(hubStatusCmd, hubManagedClustersCmd)
 
@@ -117,7 +152,79 @@ It provides a centralized interface for managing the ACM Hub and partner spoke c
 		fmt.Fprintf(os.Stderr, "Error marking flag required: %v\n", err)
 		os.Exit(1)
 	}
-	spokeCmd.AddCommand(spokeCreateCmd)
+
+	spokeKubeconfigCmd := &cobra.Command{
+		Use:   "kubeconfig <cluster-name>",
+		Short: "Extract admin kubeconfig for a spoke cluster",
+		Long: `Extract the admin kubeconfig from a spoke cluster's ClusterDeployment secret.
+
+This command retrieves the admin kubeconfig which has full cluster-admin privileges.
+Use with caution and store securely.
+
+Examples:
+  # Print kubeconfig to stdout
+  labrat spoke kubeconfig my-cluster
+
+  # Save kubeconfig to file
+  labrat spoke kubeconfig my-cluster -o /tmp/my-cluster.kubeconfig
+
+  # Use the kubeconfig with kubectl
+  labrat spoke kubeconfig my-cluster -o /tmp/kubeconfig
+  kubectl --kubeconfig /tmp/kubeconfig get nodes`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			clusterName := args[0]
+			configPath, _ := cmd.Flags().GetString("config")
+			outputPath, _ := cmd.Flags().GetString("output")
+
+			// Load config
+			cfg, err := config.Load(config.ExpandPath(configPath))
+			if err != nil {
+				return fmt.Errorf("failed to load config: %w", err)
+			}
+
+			// Create Kubernetes client
+			kubeClient, err := kube.NewClient(cfg.GetHubKubeconfig(), cfg.Hub.Context)
+			if err != nil {
+				return fmt.Errorf("failed to create kubernetes client: %w", err)
+			}
+
+			// Create kubeconfig extractor
+			extractor := spoke.NewKubeconfigExtractor(
+				kubeClient.GetDynamicClient(),
+				kubeClient.GetCoreClient(),
+			)
+
+			ctx := context.Background()
+
+			// Display security warning
+			fmt.Fprintf(os.Stderr, "\n⚠️  WARNING: This is an admin kubeconfig with full cluster-admin privileges!\n")
+			fmt.Fprintf(os.Stderr, "    Please store it securely and restrict access appropriately.\n\n")
+
+			if outputPath != "" {
+				// Extract to file
+				if err := extractor.ExtractToFile(ctx, clusterName, outputPath); err != nil {
+					return fmt.Errorf("failed to extract kubeconfig: %w", err)
+				}
+				fmt.Fprintf(os.Stderr, "✓ Kubeconfig saved to: %s\n", outputPath)
+				fmt.Fprintf(os.Stderr, "  File permissions set to 0600 (owner read/write only)\n\n")
+				fmt.Fprintf(os.Stderr, "You can now use it with kubectl:\n")
+				fmt.Fprintf(os.Stderr, "  kubectl --kubeconfig %s get nodes\n", outputPath)
+			} else {
+				// Extract to stdout
+				kubeconfig, err := extractor.Extract(ctx, clusterName)
+				if err != nil {
+					return fmt.Errorf("failed to extract kubeconfig: %w", err)
+				}
+				fmt.Print(string(kubeconfig))
+			}
+
+			return nil
+		},
+	}
+	spokeKubeconfigCmd.Flags().StringP("output", "o", "", "Output file path (default: stdout)")
+
+	spokeCmd.AddCommand(spokeCreateCmd, spokeKubeconfigCmd)
 
 	// --- BOOTSTRAP COMMAND ---
 	bootstrapCmd := &cobra.Command{

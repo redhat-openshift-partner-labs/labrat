@@ -231,4 +231,207 @@ var _ = Describe("OutputWriter", func() {
 			Expect(err.Error()).To(ContainSubstring("unsupported output format"))
 		})
 	})
+
+	Describe("WriteCombined", func() {
+		var combinedClusters []hub.CombinedClusterInfo
+
+		BeforeEach(func() {
+			combinedClusters = []hub.CombinedClusterInfo{
+				{
+					Name:       "cluster-east-1",
+					Status:     hub.StatusReady,
+					PowerState: "Running",
+					Platform:   "AWS",
+					Region:     "us-east-1",
+					Version:    "4.20.6",
+					Available:  "True",
+				},
+				{
+					Name:       "cluster-west-1",
+					Status:     hub.StatusNotReady,
+					PowerState: "Hibernating",
+					Platform:   "AWS",
+					Region:     "us-west-2",
+					Version:    "4.20.6",
+					Available:  "False",
+				},
+				{
+					Name:       "cluster-no-cd",
+					Status:     hub.StatusReady,
+					PowerState: "N/A",
+					Platform:   "N/A",
+					Region:     "N/A",
+					Version:    "N/A",
+					Available:  "True",
+				},
+			}
+		})
+
+		Describe("Table Output (default)", func() {
+			BeforeEach(func() {
+				writer = hub.NewOutputWriter(hub.OutputFormatTable, buffer)
+			})
+
+			It("should format output as basic table without wide columns", func() {
+				err := writer.WriteCombined(combinedClusters, false)
+				Expect(err).NotTo(HaveOccurred())
+
+				output := buffer.String()
+				lines := strings.Split(strings.TrimSpace(output), "\n")
+
+				// Check header - should only have basic columns
+				Expect(lines[0]).To(ContainSubstring("NAME"))
+				Expect(lines[0]).To(ContainSubstring("STATUS"))
+				Expect(lines[0]).To(ContainSubstring("AVAILABLE"))
+
+				// Should NOT have wide columns
+				Expect(lines[0]).NotTo(ContainSubstring("POWER"))
+				Expect(lines[0]).NotTo(ContainSubstring("PLATFORM"))
+				Expect(lines[0]).NotTo(ContainSubstring("REGION"))
+				Expect(lines[0]).NotTo(ContainSubstring("VERSION"))
+
+				// Check that all clusters are present
+				Expect(output).To(ContainSubstring("cluster-east-1"))
+				Expect(output).To(ContainSubstring("cluster-west-1"))
+				Expect(output).To(ContainSubstring("cluster-no-cd"))
+			})
+		})
+
+		Describe("Wide Table Output", func() {
+			BeforeEach(func() {
+				writer = hub.NewOutputWriter(hub.OutputFormatTable, buffer)
+			})
+
+			It("should format output as wide table with all columns", func() {
+				err := writer.WriteCombined(combinedClusters, true)
+				Expect(err).NotTo(HaveOccurred())
+
+				output := buffer.String()
+				lines := strings.Split(strings.TrimSpace(output), "\n")
+
+				// Check header - should have all columns
+				Expect(lines[0]).To(ContainSubstring("NAME"))
+				Expect(lines[0]).To(ContainSubstring("STATUS"))
+				Expect(lines[0]).To(ContainSubstring("POWER"))
+				Expect(lines[0]).To(ContainSubstring("PLATFORM"))
+				Expect(lines[0]).To(ContainSubstring("REGION"))
+				Expect(lines[0]).To(ContainSubstring("VERSION"))
+				Expect(lines[0]).To(ContainSubstring("AVAILABLE"))
+
+				// Check that all clusters are present
+				Expect(output).To(ContainSubstring("cluster-east-1"))
+				Expect(output).To(ContainSubstring("cluster-west-1"))
+				Expect(output).To(ContainSubstring("cluster-no-cd"))
+
+				// Check wide column data
+				Expect(output).To(ContainSubstring("Running"))
+				Expect(output).To(ContainSubstring("Hibernating"))
+				Expect(output).To(ContainSubstring("AWS"))
+				Expect(output).To(ContainSubstring("us-east-1"))
+				Expect(output).To(ContainSubstring("us-west-2"))
+				Expect(output).To(ContainSubstring("4.20.6"))
+			})
+
+			It("should handle N/A values for clusters without ClusterDeployment", func() {
+				err := writer.WriteCombined(combinedClusters, true)
+				Expect(err).NotTo(HaveOccurred())
+
+				output := buffer.String()
+
+				// cluster-no-cd should have N/A values
+				Expect(output).To(ContainSubstring("cluster-no-cd"))
+				// Count N/A occurrences in the output
+				// The cluster-no-cd row should have multiple N/A values
+				Expect(strings.Contains(output, "N/A")).To(BeTrue())
+			})
+
+			It("should align columns properly in wide mode", func() {
+				err := writer.WriteCombined(combinedClusters, true)
+				Expect(err).NotTo(HaveOccurred())
+
+				output := buffer.String()
+				lines := strings.Split(strings.TrimSpace(output), "\n")
+
+				// Should have header + 3 cluster rows
+				Expect(lines).To(HaveLen(4))
+
+				// Each line should have content (not just whitespace)
+				for _, line := range lines {
+					Expect(strings.TrimSpace(line)).NotTo(BeEmpty())
+				}
+			})
+		})
+
+		Describe("JSON Output", func() {
+			BeforeEach(func() {
+				writer = hub.NewOutputWriter(hub.OutputFormatJSON, buffer)
+			})
+
+			It("should format combined clusters as JSON regardless of wide flag", func() {
+				err := writer.WriteCombined(combinedClusters, false)
+				Expect(err).NotTo(HaveOccurred())
+
+				output := buffer.String()
+
+				// Verify it's valid JSON
+				var result []hub.CombinedClusterInfo
+				err = json.Unmarshal([]byte(output), &result)
+				Expect(err).NotTo(HaveOccurred())
+
+				// Verify all clusters are present
+				Expect(result).To(HaveLen(3))
+			})
+
+			It("should preserve all cluster data in JSON output", func() {
+				err := writer.WriteCombined(combinedClusters, true)
+				Expect(err).NotTo(HaveOccurred())
+
+				var result []hub.CombinedClusterInfo
+				err = json.Unmarshal(buffer.Bytes(), &result)
+				Expect(err).NotTo(HaveOccurred())
+
+				// Verify cluster data
+				clusterMap := make(map[string]hub.CombinedClusterInfo)
+				for _, c := range result {
+					clusterMap[c.Name] = c
+				}
+
+				Expect(clusterMap["cluster-east-1"].Status).To(Equal(hub.StatusReady))
+				Expect(clusterMap["cluster-east-1"].PowerState).To(Equal("Running"))
+				Expect(clusterMap["cluster-east-1"].Platform).To(Equal("AWS"))
+				Expect(clusterMap["cluster-east-1"].Region).To(Equal("us-east-1"))
+				Expect(clusterMap["cluster-east-1"].Version).To(Equal("4.20.6"))
+				Expect(clusterMap["cluster-east-1"].Available).To(Equal("True"))
+
+				Expect(clusterMap["cluster-west-1"].PowerState).To(Equal("Hibernating"))
+			})
+		})
+
+		Context("with empty cluster list", func() {
+			It("should display only headers for table output", func() {
+				writer = hub.NewOutputWriter(hub.OutputFormatTable, buffer)
+				err := writer.WriteCombined([]hub.CombinedClusterInfo{}, true)
+				Expect(err).NotTo(HaveOccurred())
+
+				output := buffer.String()
+				lines := strings.Split(strings.TrimSpace(output), "\n")
+
+				// Should only have the header line
+				Expect(lines).To(HaveLen(1))
+			})
+
+			It("should return empty JSON array", func() {
+				writer = hub.NewOutputWriter(hub.OutputFormatJSON, buffer)
+				err := writer.WriteCombined([]hub.CombinedClusterInfo{}, false)
+				Expect(err).NotTo(HaveOccurred())
+
+				output := strings.TrimSpace(buffer.String())
+
+				var result []hub.CombinedClusterInfo
+				err = json.Unmarshal([]byte(output), &result)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result).To(BeEmpty())
+			})
+		})
+	})
 })
