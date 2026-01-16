@@ -3,6 +3,8 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -44,6 +46,9 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("failed to parse config: %w", err)
 	}
 
+	// Expand paths after unmarshaling
+	cfg.expandPaths()
+
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
@@ -77,4 +82,35 @@ func NewDefaultConfig() *Config {
 		},
 		Verbose: false,
 	}
+}
+
+// expandPaths expands environment variables and ~ in path fields
+func (c *Config) expandPaths() {
+	c.Hub.Kubeconfig = ExpandPath(c.Hub.Kubeconfig)
+}
+
+// ExpandPath expands environment variables and ~ in a single path
+// This is exported so it can be used for config file paths as well
+func ExpandPath(path string) string {
+	if path == "" {
+		return path
+	}
+
+	// Expand environment variables
+	path = os.ExpandEnv(path)
+
+	// Expand ~ to home directory
+	if strings.HasPrefix(path, "~/") {
+		home, err := os.UserHomeDir()
+		if err == nil {
+			path = filepath.Join(home, path[2:])
+		}
+	} else if path == "~" {
+		home, err := os.UserHomeDir()
+		if err == nil {
+			path = home
+		}
+	}
+
+	return path
 }

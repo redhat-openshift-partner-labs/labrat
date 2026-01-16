@@ -1,0 +1,36 @@
+# LABRAT Configuration File
+# This is a development configuration that can be used locally
+# Copy to ~/.labrat/config.yaml or use with --config flag
+
+# Hub cluster configuration (ACM management cluster)
+hub:
+  # Path to kubeconfig for the ACM hub cluster
+  # Supports environment variables ($HOME) and tilde (~) expansion
+  kubeconfig: $HOME/.kube/config
+  # kubeconfig: $HOME/Development/misc/openshift-partner-labs-envs/admin/config
+
+  # Kubernetes context to use from the kubeconfig
+  # Leave empty to use current-context from kubeconfig
+  context: ""
+
+  # ACM namespace where ManagedCluster resources are managed
+  # Default: open-cluster-management
+  namespace: open-cluster-management
+
+# Default values for resource provisioning
+defaults:
+  spoke:
+    # Default cloud provider for spoke cluster provisioning
+    # Options: aws, azure, gcp, on-prem
+    provider: aws
+
+    # Default region for cloud provider
+    region: us-east-1
+
+    # Default cluster size
+    # Options: small, medium, large
+    size: medium
+
+# Global verbose logging flag
+# Can be overridden with --verbose flag on command line
+verbose: false

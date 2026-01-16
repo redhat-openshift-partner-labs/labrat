@@ -35,6 +35,63 @@ Global Flags:
   -v, --verbose     Enable debug logging
 ```
 
+## 📖 Commands
+
+### Hub Commands
+
+#### `labrat hub managedclusters`
+
+List all ACM managed clusters from the hub with status information.
+
+**Usage**:
+```bash
+labrat hub managedclusters [flags]
+```
+
+**Flags**:
+- `--output, -o`: Output format (table|json), default: table
+- `--status`: Filter by status (Ready|NotReady|Unknown), optional
+- `--config, -c`: Path to labrat config (default: ~/.labrat/config.yaml)
+- `--verbose, -v`: Enable debug logging
+
+**Examples**:
+
+```bash
+# List all managed clusters in table format
+labrat hub managedclusters
+
+# Output as JSON
+labrat hub managedclusters --output json
+
+# Filter by status
+labrat hub managedclusters --status Ready
+labrat hub managedclusters --status NotReady
+
+# Use custom config
+labrat hub managedclusters --config ./my-config.yaml
+```
+
+**Example Output** (table format):
+```
+NAME                STATUS      AVAILABLE
+cluster-east-1      Ready       True
+cluster-west-1      NotReady    False
+cluster-central     Unknown     Unknown
+```
+
+**Prerequisites**:
+- Access to an ACM hub cluster
+- Valid kubeconfig configured in `~/.labrat/config.yaml`
+- Kubernetes permissions to list ManagedCluster resources
+
+**Status Derivation**:
+The command derives cluster status using the following priority:
+1. Unreachable taint present → NotReady
+2. ManagedClusterConditionAvailable=True → Ready
+3. ManagedClusterConditionAvailable=False → NotReady
+4. ManagedClusterConditionAvailable=Unknown → Unknown
+5. No conditions → Unknown
+
 ## 🛠 Development & Build
 
 This project uses [Taskfile](https://taskfile.dev) for task automation.
@@ -51,15 +108,48 @@ This project uses [Taskfile](https://taskfile.dev) for task automation.
 # Initialize Go modules and dependencies
 task init
 
+# Set up configuration (choose one option):
+
+# Option 1: Use the development config in the project directory
+# No setup needed - use --config flag with commands
+
+# Option 2: Copy to standard location
+mkdir -p ~/.labrat
+cp config.yaml ~/.labrat/config.yaml
+
+# Option 3: Symlink for automatic updates during development
+mkdir -p ~/.labrat
+ln -s $(pwd)/config.yaml ~/.labrat/config.yaml
+
 # Build the binary
 task build
 
-# Run the tool locally
-task run -- hub status
+# Run the tool locally (using project config)
+./bin/labrat hub managedclusters --config config.yaml
+
+# Or run with standard config location (~/.labrat/config.yaml)
+./bin/labrat hub managedclusters
 
 # Install the binary to your $GOPATH/bin
 task install
 ```
+
+### Configuration
+
+LABRAT requires a configuration file to connect to your ACM hub cluster. A development-ready `config.yaml` is included in the project root.
+
+**Default config location**: `~/.labrat/config.yaml`
+
+**Development options**:
+1. Use project config: `labrat [command] --config config.yaml`
+2. Copy to home directory: `cp config.yaml ~/.labrat/config.yaml`
+3. Symlink for auto-sync: `ln -s $(pwd)/config.yaml ~/.labrat/config.yaml`
+
+**Required configuration**:
+- `hub.kubeconfig`: Path to kubeconfig for ACM hub cluster
+- `hub.namespace`: ACM namespace (default: `open-cluster-management`)
+
+See `config.yaml` for full configuration options and documentation.
 
 ## 📂 Project Structure
 

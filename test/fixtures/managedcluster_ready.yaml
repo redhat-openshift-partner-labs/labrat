@@ -1,0 +1,39 @@
+apiVersion: cluster.open-cluster-management.io/v1
+kind: ManagedCluster
+metadata:
+  name: cluster-ready
+  labels:
+    cloud: auto-detect
+    vendor: auto-detect
+    name: cluster-ready
+spec:
+  hubAcceptsClient: true
+  leaseDurationSeconds: 60
+status:
+  allocatable:
+    cpu: "32"
+    memory: 128Gi
+  capacity:
+    cpu: "36"
+    memory: 144Gi
+  version:
+    kubernetes: v1.28.0
+  clusterClaims:
+    - name: id.k8s.io
+      value: cluster-ready
+  conditions:
+    - lastTransitionTime: "2024-01-15T10:00:00Z"
+      message: "Accepted by hub cluster admin"
+      reason: HubClusterAdminAccepted
+      status: "True"
+      type: HubAcceptedManagedCluster
+    - lastTransitionTime: "2024-01-15T10:05:00Z"
+      message: "Managed cluster joined"
+      reason: ManagedClusterJoined
+      status: "True"
+      type: ManagedClusterJoined
+    - lastTransitionTime: "2024-01-15T10:10:00Z"
+      message: "Managed cluster is available"
+      reason: ManagedClusterAvailable
+      status: "True"
+      type: ManagedClusterConditionAvailable

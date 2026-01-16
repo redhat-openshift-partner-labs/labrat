@@ -1,0 +1,43 @@
+apiVersion: cluster.open-cluster-management.io/v1
+kind: ManagedCluster
+metadata:
+  name: cluster-notready
+  labels:
+    cloud: auto-detect
+    vendor: auto-detect
+    name: cluster-notready
+spec:
+  hubAcceptsClient: true
+  leaseDurationSeconds: 60
+  taints:
+    - effect: NoSelect
+      key: cluster.open-cluster-management.io/unreachable
+      timeAdded: "2024-01-15T12:00:00Z"
+status:
+  allocatable:
+    cpu: "16"
+    memory: 64Gi
+  capacity:
+    cpu: "20"
+    memory: 80Gi
+  version:
+    kubernetes: v1.27.0
+  clusterClaims:
+    - name: id.k8s.io
+      value: cluster-notready
+  conditions:
+    - lastTransitionTime: "2024-01-15T10:00:00Z"
+      message: "Accepted by hub cluster admin"
+      reason: HubClusterAdminAccepted
+      status: "True"
+      type: HubAcceptedManagedCluster
+    - lastTransitionTime: "2024-01-15T10:05:00Z"
+      message: "Managed cluster joined"
+      reason: ManagedClusterJoined
+      status: "True"
+      type: ManagedClusterJoined
+    - lastTransitionTime: "2024-01-15T12:00:00Z"
+      message: "Managed cluster is not reachable"
+      reason: ManagedClusterNotReachable
+      status: "False"
+      type: ManagedClusterConditionAvailable

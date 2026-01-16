@@ -1,0 +1,36 @@
+apiVersion: hive.openshift.io/v1
+kind: ClusterDeployment
+metadata:
+  name: test-cluster-hibernating
+  namespace: test-cluster-hibernating
+  labels:
+    hive.openshift.io/cluster-platform: aws
+    hive.openshift.io/cluster-region: us-west-2
+spec:
+  clusterName: test-cluster-hibernating
+  installed: true
+  powerState: Hibernating
+  platform:
+    aws:
+      region: us-west-2
+  clusterMetadata:
+    clusterID: def456-test-cluster-id
+    adminKubeconfigSecretRef:
+      name: test-cluster-hibernating-admin-kubeconfig
+    platform:
+      aws: {}
+status:
+  apiURL: https://api.test-cluster-hibernating.example.com:6443
+  webConsoleURL: https://console.test-cluster-hibernating.example.com
+  installVersion: 4.19.8
+  installed: true
+  powerState: Hibernating
+  conditions:
+    - type: Provisioned
+      status: "True"
+      reason: Provisioned
+      message: Cluster is provisioned
+    - type: Hibernating
+      status: "True"
+      reason: Hibernating
+      message: Cluster is stopped

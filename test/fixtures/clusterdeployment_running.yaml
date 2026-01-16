@@ -1,0 +1,32 @@
+apiVersion: hive.openshift.io/v1
+kind: ClusterDeployment
+metadata:
+  name: test-cluster-running
+  namespace: test-cluster-running
+  labels:
+    hive.openshift.io/cluster-platform: aws
+    hive.openshift.io/cluster-region: us-east-1
+spec:
+  clusterName: test-cluster-running
+  installed: true
+  powerState: Running
+  platform:
+    aws:
+      region: us-east-1
+  clusterMetadata:
+    clusterID: abc123-test-cluster-id
+    adminKubeconfigSecretRef:
+      name: test-cluster-running-admin-kubeconfig
+    platform:
+      aws: {}
+status:
+  apiURL: https://api.test-cluster-running.example.com:6443
+  webConsoleURL: https://console.test-cluster-running.example.com
+  installVersion: 4.20.6
+  installed: true
+  powerState: Running
+  conditions:
+    - type: Provisioned
+      status: "True"
+      reason: Provisioned
+      message: Cluster is provisioned
